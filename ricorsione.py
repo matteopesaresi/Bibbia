@@ -56,3 +56,50 @@ class Model:
             peso_arco = self._graph[nodo_A][nodo_B]['weight']
             score += peso_arco
         return score
+
+
+#CONTROLLER
+# 1. Recupero gli oggetti nodo dalle tendine
+nodo_partenza = self._view._ddPartenza.value
+nodo_arrivo = self._view._ddArrivo.value
+
+# Controllo di sicurezza
+if nodo_partenza is None or nodo_arrivo is None:
+    self._view.txt_result.controls.append(ft.Text("Errore: Seleziona sia la partenza che l'arrivo!", color="red"))
+    self._view.update_page()
+    return
+
+# (Opzionale ma utile) Pulisci i risultati precedenti prima di stampare quelli nuovi
+self._view.txt_result.controls.clear()
+self._view.txt_result.controls.append(
+    ft.Text("Calcolo del percorso ottimale in corso... (potrebbe richiedere qualche secondo)"))
+self._view.update_page()  # Aggiorna la schermata per mostrare il messaggio di attesa
+
+# 2. Lanciamo la ricorsione!
+# La funzione restituisce la tupla: (lista_del_percorso, punteggio_record)
+cammino_ottimo, punteggio_max = self._model.cerca_cammino_ottimo(nodo_partenza, nodo_arrivo)
+
+# 3. Analizziamo e stampiamo i risultati
+if len(cammino_ottimo) == 0:
+    self._view.txt_result.controls.append(
+        ft.Text("Nessun cammino valido trovato tra questi due nodi.", color="red")
+    )
+else:
+    self._view.txt_result.controls.append(
+        ft.Text(f"Cammino Ottimo trovato!\nPunteggio totale (peso massimo): {punteggio_max}", color="green",
+                weight="bold")
+    )
+
+    self._view.txt_result.controls.append(
+        ft.Text(f"Il percorso è composto da {len(cammino_ottimo)} nodi:")
+    )
+
+    # Stampiamo ogni nodo del percorso, andando a capo
+    for nodo in cammino_ottimo:
+        self._view.txt_result.controls.append(ft.Text(f"- {nodo.Name}"))
+
+    # (Metodo alternativo più compatto usando le freccette)
+    # nomi_nodi = [nodo.Name for nodo in cammino_ottimo]
+    # self._view.txt_result.controls.append(ft.Text(" -> ".join(nomi_nodi)))
+
+self._view.update_page()
