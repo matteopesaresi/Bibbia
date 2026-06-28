@@ -179,7 +179,7 @@ def handle_ricorsione_1(self, e):
 
 
 # =========================================================================
-# 2. IL SENZA META: CAMMINO PIU' LUNGO CON VINCOLO CRESCENTE
+# 2. IL SENZA META: CAMMINO PIU' LUNGO CON VINCOLO CRESCENTE / # VINCOLO DECRESCENTE
 # =========================================================================
 # Obiettivo: Esplorare partendo da un nodo e trovare la catena più lunga
 # (maggior numero di artisti).
@@ -213,7 +213,7 @@ def _ric_lungo_cresc(self, parziale):
                 peso_precedente = self._graph[penultimo][ultimo]['weight']
                 peso_nuovo = self._graph[ultimo][vicino]['weight']
 
-                if peso_nuovo > peso_precedente:  # VINCOLO CRESCENTE
+                if peso_nuovo > peso_precedente:  # VINCOLO CRESCENTE cambia se vuoi # VINCOLO DECRESCENTE
                     parziale.append(vicino)
                     self._ric_lungo_cresc(parziale)
                     parziale.pop()
@@ -353,3 +353,186 @@ def handle_ricorsione_4(self, e):
         for n in cammino:
             self._view.txt_result.controls.append(ft.Text(f"-> {n.Name}"))
     self._view.update_page()
+
+    # =========================================================================
+    # 5. IL BUDGET (Problema dello Zaino)
+    # =========================================================================
+    # Obiettivo: Partendo da un artista, visitare il MAGGIOR NUMERO DI NODI possibile
+    # (la catena più lunga), ma la SOMMA DEI PESI (le vendite) non deve MAI superare
+    # un certo Budget Massimo imposto dall'utente.
+
+    # ----------------- DA METTERE NEL MODEL -----------------
+    def get_cammino_con_budget(self, partenza, budget_max):
+        self.best_cammino = []
+        self.best_score = 0  # In questo caso lo score è il numero di nodi visitati
+        self._ric_budget([partenza], budget_max)
+        return self.best_cammino, self.best_score
+
+    def _ric_budget(self, parziale, budget_residuo):
+        # Valutazione continua: aggiorno il record se ho visitato più nodi
+        if len(parziale) > self.best_score:
+            self.best_score = len(parziale)
+            self.best_cammino = copy.deepcopy(parziale)
+
+        ultimo = parziale[-1]
+
+        for vicino in self._graph.neighbors(ultimo):
+            if vicino not in parziale:
+                # Quanto mi costa fare questo salto?
+                costo_arco = self._graph[ultimo][vicino]['weight']
+
+                # VINCOLO BUDGET: Ci vado SOLO se mi rimangono abbastanza soldi/spazio
+                if costo_arco <= budget_residuo:
+                    parziale.append(vicino)
+                    # Ricorsione scalando il budget!
+                    self._ric_budget(parziale, budget_residuo - costo_arco)
+                    parziale.pop()
+
+    # --------------- DA METTERE NEL CONTROLLER ---------------
+    def handle_ricorsione_budget(self, e):
+        nodo_partenza = self._view._ddPartenza.value
+        valore_budget_str = self._view.txt_budget.value  # Campo di testo inserito dall'utente
+
+        if nodo_partenza is None or not valore_budget_str:
+            self._view.txt_result.controls.append(ft.Text("Inserisci partenza e budget!", color="red"))
+            self._view.update_page()
+            return
+
+        budget_max = float(valore_budget_str)  # o int() se il peso è senza virgola
+        self._view.txt_result.controls.clear()
+
+        cammino, numero_nodi = self._model.get_cammino_con_budget(nodo_partenza, budget_max)
+
+        if len(cammino) == 0:
+            self._view.txt_result.controls.append(ft.Text("Nessun percorso trovato entro il budget."))
+        else:
+            self._view.txt_result.controls.append(
+                ft.Text(f"Trovato! Visitati {numero_nodi} artisti restando nel budget.", weight="bold")
+            )
+            for n in cammino:
+                self._view.txt_result.controls.append(ft.Text(f"-> {n.Name}"))
+        self._view.update_page()
+
+    # =========================================================================
+    # 6. L'ALTERNANZA (Incompatibilità consecutiva)
+    # =========================================================================
+    # Obiettivo: Trovare il percorso di peso massimo (partenza libera finché ci si blocca)
+    # Vincolo: L'ID dell'artista precedente e successivo devono avere parità DIVERSA
+    # (uno Pari e uno Dispari, rigorosamente alternati).
+
+    # ----------------- DA METTERE NEL MODEL -----------------
+    def get_cammino_alternato(self, partenza):
+        self.best_cammino = []
+        self.best_score = 0
+        self._ric_alternato([partenza])
+        return self.best_cammino, self.best_score
+
+    def _ric_alternato(self, parziale):
+        # Valutazione: in questo caso vogliamo massimizzare il peso totale
+        score_attuale = self.calcola_score_cammino(parziale)
+        if score_attuale > self.best_score:
+            self.best_score = score_attuale
+            self.best_cammino = copy.deepcopy(parziale)
+
+        ultimo = parziale[-1]
+
+        for vicino in self._graph.neighbors(ultimo):
+            if vicino not in parziale:
+
+                # VINCOLO ALTERNANZA: Controllo che le due parità siano DIVERSE
+                parita_ultimo = ultimo.ArtistId % 2
+                parita_vicino = vicino.ArtistId % 2
+
+                if parita_ultimo != parita_vicino:
+                    parziale.append(vicino)
+                    self._ric_alternato(parziale)
+                    parziale.pop()
+
+    # --------------- DA METTERE NEL CONTROLLER ---------------
+    def handle_ricorsione_alternanza(self, e):
+        nodo_partenza = self._view._ddPartenza.value
+
+        if nodo_partenza is None:
+            self._view.txt_result.controls.append(ft.Text("Seleziona il nodo di partenza!", color="red"))
+            self._view.update_page()
+            return
+
+        self._view.txt_result.controls.clear()
+
+        cammino, score = self._model.get_cammino_alternato(nodo_partenza)
+
+        if len(cammino) == 0:
+            self._view.txt_result.controls.append(ft.Text("Nessun percorso alternato trovato."))
+        else:
+            self._view.txt_result.controls.append(
+                ft.Text(f"Cammino record trovato! Punteggio (peso): {score}", weight="bold")
+            )
+            for n in cammino:
+                # Stampiamo anche l'ID per mostrare l'alternanza Pari/Dispari all'utente
+                self._view.txt_result.controls.append(ft.Text(f"-> {n.Name} (ID: {n.ArtistId})"))
+        self._view.update_page()
+
+    # =========================================================================
+    # 7. I NODI "RADIOATTIVI" (Scartare un'intera categoria)
+    # =========================================================================
+    # Obiettivo: Andare dalla Partenza all'Arrivo massimizzando i pesi.
+    # Vincolo: Il percorso NON DEVE MAI PASSARE per gli artisti il cui nome
+    # contiene una certa parola vietata (es. "The" o "Orchestra").
+
+    # ----------------- DA METTERE NEL MODEL -----------------
+    def get_cammino_senza_radioattivi(self, partenza, arrivo, parola_vietata):
+        self.best_cammino = []
+        self.best_score = 0
+        self._ric_senza_radioattivi([partenza], arrivo, parola_vietata.lower())
+        return self.best_cammino, self.best_score
+
+    def _ric_senza_radioattivi(self, parziale, arrivo, parola_vietata):
+        ultimo = parziale[-1]
+
+        if ultimo == arrivo:
+            score = self.calcola_score_cammino(parziale)
+            if score > self.best_score:
+                self.best_score = score
+                self.best_cammino = copy.deepcopy(parziale)
+            return
+
+        for vicino in self._graph.neighbors(ultimo):
+            if vicino not in parziale:
+
+                # VINCOLO RADIOATTIVO: Se il nome del vicino contiene la parola vietata...
+                # usiamo 'continue' per ignorarlo e passare direttamente al prossimo vicino!
+                if parola_vietata in vicino.Name.lower():
+                    continue
+
+                    # Se è "pulito", procediamo normalmente
+                parziale.append(vicino)
+                self._ric_senza_radioattivi(parziale, arrivo, parola_vietata)
+                parziale.pop()
+
+    # --------------- DA METTERE NEL CONTROLLER ---------------
+    def handle_ricorsione_radioattivi(self, e):
+        nodo_partenza = self._view._ddPartenza.value
+        nodo_arrivo = self._view._ddArrivo.value
+        parola_vietata = self._view.txt_parola_vietata.value  # Es. l'utente scrive "The"
+
+        if nodo_partenza is None or nodo_arrivo is None or not parola_vietata:
+            self._view.txt_result.controls.append(ft.Text("Inserisci partenza, arrivo e parola vietata!", color="red"))
+            self._view.update_page()
+            return
+
+        self._view.txt_result.controls.clear()
+
+        cammino, score = self._model.get_cammino_senza_radioattivi(nodo_partenza, nodo_arrivo, parola_vietata)
+
+        if len(cammino) == 0:
+            self._view.txt_result.controls.append(
+                ft.Text(f"Impossibile raggiungere {nodo_arrivo.Name} senza passare per '{parola_vietata}'.",
+                        color="red")
+            )
+        else:
+            self._view.txt_result.controls.append(
+                ft.Text(f"Cammino sicuro trovato! Punteggio totale: {score}", weight="bold", color="green")
+            )
+            for n in cammino:
+                self._view.txt_result.controls.append(ft.Text(f"-> {n.Name}"))
+        self._view.update_page()
