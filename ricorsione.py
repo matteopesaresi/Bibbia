@@ -103,3 +103,253 @@ else:
     # self._view.txt_result.controls.append(ft.Text(" -> ".join(nomi_nodi)))
 
 self._view.update_page()
+
+
+
+
+# =========================================================================
+# FUNZIONE DI SUPPORTO UTILE PER TUTTE LE RICORSIONI (METTERE NEL MODEL)
+# =========================================================================
+# Obiettivo: Calcola la somma dei pesi degli archi di un determinato percorso.
+# (Presuppone che il grafo sia già stato creato e che gli archi abbiano l'attributo 'weight')
+def calcola_score_cammino(self, cammino):
+    score = 0
+    for i in range(len(cammino) - 1):
+        nodo_A = cammino[i]
+        nodo_B = cammino[i + 1]
+        peso_arco = self._graph[nodo_A][nodo_B]['weight']
+        score += peso_arco
+    return score
+
+
+# =========================================================================
+# 1. IL CLASSICO: CAMMINO DI PESO MASSIMO (TRA A E B)
+# =========================================================================
+# Obiettivo: Trovare il percorso tra due artisti scelti (Partenza e Arrivo)
+# che massimizza il punteggio totale (la somma dei pesi degli archi attraversati).
+
+# ----------------- DA METTERE NEL MODEL -----------------
+def get_cammino_peso_massimo(self, partenza, arrivo):
+    self.best_cammino = []
+    self.best_score = 0
+    self._ric_peso_max([partenza], arrivo)
+    return self.best_cammino, self.best_score
+
+
+def _ric_peso_max(self, parziale, arrivo):
+    ultimo = parziale[-1]
+
+    # Terminazione: siamo arrivati a destinazione?
+    if ultimo == arrivo:
+        score = self.calcola_score_cammino(parziale)
+        if score > self.best_score:
+            self.best_score = score
+            self.best_cammino = copy.deepcopy(parziale)
+        return
+
+        # Esplorazione
+    for vicino in self._graph.neighbors(ultimo):
+        if vicino not in parziale:
+            parziale.append(vicino)
+            self._ric_peso_max(parziale, arrivo)
+            parziale.pop()
+
+        # --------------- DA METTERE NEL CONTROLLER ---------------
+
+
+def handle_ricorsione_1(self, e):
+    nodo_partenza = self._view._ddPartenza.value
+    nodo_arrivo = self._view._ddArrivo.value
+
+    if nodo_partenza is None or nodo_arrivo is None:
+        self._view.txt_result.controls.append(ft.Text("Seleziona partenza e arrivo!", color="red"))
+        self._view.update_page()
+        return
+
+    self._view.txt_result.controls.clear()
+    cammino, score = self._model.get_cammino_peso_massimo(nodo_partenza, nodo_arrivo)
+
+    if len(cammino) == 0:
+        self._view.txt_result.controls.append(ft.Text("Nessun percorso trovato."))
+    else:
+        self._view.txt_result.controls.append(ft.Text(f"Trovato! Peso massimo totale: {score}", weight="bold"))
+        for n in cammino:
+            self._view.txt_result.controls.append(ft.Text(f"-> {n.Name}"))
+    self._view.update_page()
+
+
+# =========================================================================
+# 2. IL SENZA META: CAMMINO PIU' LUNGO CON VINCOLO CRESCENTE
+# =========================================================================
+# Obiettivo: Esplorare partendo da un nodo e trovare la catena più lunga
+# (maggior numero di artisti).
+# Vincolo: ci si può spostare solo se l'arco successivo ha un peso STRETTAMENTE MAGGIORE
+# di quello dell'arco appena percorso.
+
+# ----------------- DA METTERE NEL MODEL -----------------
+def get_cammino_lungo_crescente(self, partenza):
+    self.best_cammino = []
+    self.best_score = 0
+    self._ric_lungo_cresc([partenza])
+    return self.best_cammino, self.best_score
+
+
+def _ric_lungo_cresc(self, parziale):
+    # Valutazione continua (non c'è destinazione fissa, ci fermiamo quando ci blocchiamo)
+    if len(parziale) > self.best_score:
+        self.best_score = len(parziale)
+        self.best_cammino = copy.deepcopy(parziale)
+
+    ultimo = parziale[-1]
+
+    for vicino in self._graph.neighbors(ultimo):
+        if vicino not in parziale:
+            if len(parziale) == 1:
+                parziale.append(vicino)
+                self._ric_lungo_cresc(parziale)
+                parziale.pop()
+            else:
+                penultimo = parziale[-2]
+                peso_precedente = self._graph[penultimo][ultimo]['weight']
+                peso_nuovo = self._graph[ultimo][vicino]['weight']
+
+                if peso_nuovo > peso_precedente:  # VINCOLO CRESCENTE
+                    parziale.append(vicino)
+                    self._ric_lungo_cresc(parziale)
+                    parziale.pop()
+
+
+# --------------- DA METTERE NEL CONTROLLER ---------------
+def handle_ricorsione_2(self, e):
+    nodo_partenza = self._view._ddPartenza.value
+
+    if nodo_partenza is None:
+        self._view.txt_result.controls.append(ft.Text("Seleziona il nodo di partenza!", color="red"))
+        self._view.update_page()
+        return
+
+    self._view.txt_result.controls.clear()
+    cammino, lunghezza = self._model.get_cammino_lungo_crescente(nodo_partenza)
+
+    self._view.txt_result.controls.append(
+        ft.Text(f"Cammino record trovato! E' lungo {lunghezza} nodi.", weight="bold")
+    )
+    for n in cammino:
+        self._view.txt_result.controls.append(ft.Text(f"-> {n.Name}"))
+    self._view.update_page()
+
+
+# =========================================================================
+# 3. IL "TARGET FISSO": CAMMINO DI LUNGHEZZA ESATTA N
+# =========================================================================
+# Obiettivo: Partendo da un artista, trovare il percorso formato esattamente da
+# N artisti che ha il punteggio totale (somma pesi) più alto.
+
+# ----------------- DA METTERE NEL MODEL -----------------
+def get_cammino_lunghezza_N(self, partenza, N):
+    self.best_cammino = []
+    self.best_score = 0
+    self._ric_lunghezza_fissa([partenza], N)
+    return self.best_cammino, self.best_score
+
+
+def _ric_lunghezza_fissa(self, parziale, N):
+    # Terminazione esatta a N nodi
+    if len(parziale) == N:
+        score = self.calcola_score_cammino(parziale)
+        if score > self.best_score:
+            self.best_score = score
+            self.best_cammino = copy.deepcopy(parziale)
+        return
+
+    ultimo = parziale[-1]
+
+    for vicino in self._graph.neighbors(ultimo):
+        if vicino not in parziale:
+            parziale.append(vicino)
+            self._ric_lunghezza_fissa(parziale, N)
+            parziale.pop()
+
+
+# --------------- DA METTERE NEL CONTROLLER ---------------
+def handle_ricorsione_3(self, e):
+    nodo_partenza = self._view._ddPartenza.value
+    valore_n_str = self._view.txt_lunghezza_N.value
+
+    if nodo_partenza is None or not valore_n_str:
+        self._view.txt_result.controls.append(ft.Text("Inserisci partenza e lunghezza N!", color="red"))
+        self._view.update_page()
+        return
+
+    N = int(valore_n_str)
+    self._view.txt_result.controls.clear()
+
+    cammino, score = self._model.get_cammino_lunghezza_N(nodo_partenza, N)
+
+    if len(cammino) == 0:
+        self._view.txt_result.controls.append(ft.Text(f"Impossibile trovare un cammino di esattamente {N} nodi."))
+    else:
+        self._view.txt_result.controls.append(
+            ft.Text(f"Ottimo trovato (lunghezza {N})! Punteggio: {score}", weight="bold")
+        )
+        for n in cammino:
+            self._view.txt_result.controls.append(ft.Text(f"-> {n.Name}"))
+    self._view.update_page()
+
+
+# =========================================================================
+# 4. L'ECCEZIONE: RICERCA DI UN CICLO
+# =========================================================================
+# Obiettivo: Partire da un artista, farsi un giro nella rete esplorando almeno
+# 4 nodi e ritornare ESATTAMENTE al punto di partenza massimizzando la somma dei pesi.
+
+# ----------------- DA METTERE NEL MODEL -----------------
+def cerca_ciclo_massimo(self, partenza):
+    self.best_cammino = []
+    self.best_score = 0
+    self._ric_ciclo([partenza], partenza)
+    return self.best_cammino, self.best_score
+
+
+def _ric_ciclo(self, parziale, partenza):
+    ultimo = parziale[-1]
+
+    # Terminazione: siamo tornati e abbiamo fatto un giro largo (>3 nodi)
+    if ultimo == partenza and len(parziale) > 3:
+        score = self.calcola_score_cammino(parziale)
+        if score > self.best_score:
+            self.best_score = score
+            self.best_cammino = copy.deepcopy(parziale)
+        return
+
+    for vicino in self._graph.neighbors(ultimo):
+        # Condizione speciale per chiudere il ciclo: posso visitare il vicino SE non ci sono mai stato
+        # OPPURE SE è proprio la partenza e sto cercando di chiudere il giro
+        if vicino not in parziale or (vicino == partenza and len(parziale) > 2):
+            parziale.append(vicino)
+            self._ric_ciclo(parziale, partenza)
+            parziale.pop()
+
+
+# --------------- DA METTERE NEL CONTROLLER ---------------
+def handle_ricorsione_4(self, e):
+    nodo_partenza = self._view._ddPartenza.value
+
+    if nodo_partenza is None:
+        self._view.txt_result.controls.append(ft.Text("Seleziona il nodo da cui far partire il ciclo!", color="red"))
+        self._view.update_page()
+        return
+
+    self._view.txt_result.controls.clear()
+    cammino, score = self._model.cerca_ciclo_massimo(nodo_partenza)
+
+    if len(cammino) == 0:
+        self._view.txt_result.controls.append(
+            ft.Text(f"Non esiste nessun ciclo utile partendo da {nodo_partenza.Name}."))
+    else:
+        self._view.txt_result.controls.append(
+            ft.Text(f"Ciclo trovato! Punteggio totale: {score}", weight="bold")
+        )
+        for n in cammino:
+            self._view.txt_result.controls.append(ft.Text(f"-> {n.Name}"))
+    self._view.update_page()
